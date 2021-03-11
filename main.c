@@ -9,12 +9,7 @@ void unpack(char *file_name);
 
 int main(int argc, char* argv[])
 {
-	for(int i = 0; i < argc; i++)
-	{
-		printf("i = %d: %s", i, argv[i]);
-	}
-
-	//Парсим аршументы
+	//Парсим аргументы
 	int opt;
 	while ((opt = getopt(argc, argv, "pu:")) != -1)
 	{
