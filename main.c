@@ -6,12 +6,16 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <dirent.h>
+#include <stdbool.h>
 
 void pack(char *file_names_arr[], int length, int start_index);
 void unpack(char *file_name);
-void pack_file(int arch, struct file_descr descr, int *file_count, int parent_id);
+void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id);
+void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id);
+void pack_file(int arch, char file_name[80]);
 void unpack_file();
-void pack_dir(int arch, struct file_descr descr, int *file_count, int parent_id);
+void pack_dir (int arch, char file_name[80]);
 void unpack_dir();
 
 //Программа архивирует файлы без сжатия
@@ -47,7 +51,7 @@ int main(int argc, char* argv[])
 
 struct file_descr
 {
-	bool file; //True - файл, false - директория
+	bool is_file; //True - файл, false - директория
 	int id; //Нумерация начинаетя с 0
 	size_t file_size; //размер файла/дирпектории (у директории размер 0)
 	char file_name[80]; //имя файла
@@ -123,29 +127,18 @@ void pack(char *file_names_arr[], int length, int start_index)
 		{	
 			//int file = open(file_names_arr[i], O_RDONLY); //TODO: catch error
 			//printf("File name = %s, file size = %ld\n", file_names_arr[i], file_stat.st_size);
-			struct file_descr descr;
-			descr.file_size = file_stat.st_size;
-			strcpy(descr.file_name, file_names_arr[i]);
-			/*if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
-			{
-				printf("Incorrect writing\n");	
-			}
-			file_count++;*/
-			pack_file(arch, descr, &file_count, -1);
+			pack_fdescr(arch, file_names_arr[i], file_stat.st_size, &file_count, -1);
 			
 		}
 		else if(S_ISDIR(file_stat.st_mode)) //если это директория
 		{
-			struct file_descr descr;
-			descr.file_size = 0;
-			strcpy(descr.file_name, file_names_arr[i]);
+			pack_ddestr(arch, file_names_arr[i], &file_count, 0);
 		}
 	}
 
+	//Writing data into archive
 	for(int i = start_index; i < length; i++)
 	{
-		int nread;
-		char block[1024];
 		int e = stat(file_names_arr[i], &file_stat); //TODO: stat is slow! Change?
 		if(e == -1) 
 		{
@@ -154,23 +147,11 @@ void pack(char *file_names_arr[], int length, int start_index)
 			
 		if(S_ISREG(file_stat.st_mode)) //если это файл
 		{	
-			int file = open(file_names_arr[i], O_RDONLY); //TODO: catch error
-			if (file == -1)
-			{
-				printf("Some error has occured! Can't open file.\n");
-				return;
-			}
-			while((nread = read(file, block, sizeof(block))) > 0)
-			{
-				write(arch, block, nread);
-				printf("%s",block);
-			}
-			close(file);
-			
+			pack_file(arch, file_names_arr[i]);		
 		}
 		else if(S_ISDIR(file_stat.st_mode)) //если это директория
 		{
-			printf("%s is a directory! AAAAAAAAAAAAAAAAAAAAAAAAAA!!!\n", file_names_arr[i]);
+			pack_dir(arch, file_names_arr[i]);
 		}
 	}
 
@@ -180,12 +161,104 @@ void pack(char *file_names_arr[], int length, int start_index)
 	close(arch);
 }
 
-void pack_file(int arch, struct file_descr descr, int *file_count, int parent_id)
+void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id)
 {
-
+	struct file_descr descr;
+	descr.file_size = file_size;
+	strcpy(descr.file_name, file_name);
+	descr.is_file = true;
+	descr.id = *file_count;
+	descr.parent_id = parent_id;
+	if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
+	{
+		printf("Incorrect writing\n");	
+	}
+	*file_count++;
 }
 
-void pack_dir(int arch, struct file_descr descr, int *file_count, int parent_id)
+void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
 {
-	
+	struct file_descr descr;
+	descr.file_size = 0;
+	strcpy(descr.file_name, file_name);
+	descr.is_file = false;
+	descr.id = *file_count;
+	descr.parent_id = parent_id;
+	if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
+	{
+		printf("Incorrect writing\n");	
+	}
+	*file_count++;
+
+	DIR *d;
+	struct dirent *entry;
+	struct stat statbuf;
+	if ((d = opendir(file_name)) == NULL)
+	{
+		printf("Error occured! Can't open directory.");
+	}
+	chdir(file_name);
+	printf("In directory %s\n", file_name);
+	while ((entry = readdir(d)) != NULL)
+	{
+		lstat(entry->d_name, &statbuf);
+		if(S_ISREG(statbuf.st_mode))
+		{
+			pack_fdescr(arch, entry->d_name, statbuf.st_size, file_count, descr.id);
+		}
+		else if (S_ISDIR(statbuf.st_mode)) 
+		{
+			/* Находит каталог, но игнорирует . и .. */
+			if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
+			continue;
+			pack_ddestr(arch, entry->d_name, file_count, descr.id);
+		}
+	}
+	chdir("..");
+	closedir(d);
+}
+
+void pack_dir (int arch, char file_name[80])
+{
+	DIR *d;
+	struct dirent *entry;
+	struct stat statbuf;
+	if ((d = opendir(file_name)) == NULL)
+	{
+		printf("Error occured! Can't open directory.");
+	}
+	chdir(file_name);
+	while ((entry = readdir(d)) != NULL)
+	{
+		lstat(entry->d_name, &statbuf);
+		if(S_ISREG(statbuf.st_mode))
+		{
+			pack_file(arch, entry->d_name);	
+		}
+		else if (S_ISDIR(statbuf.st_mode)) 
+		{
+			if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
+			continue;
+			pack_dir(arch, entry->d_name);	
+		}
+	}
+	chdir("..");
+	closedir(d);
+}
+
+void pack_file(int arch, char file_name[80])
+{
+	int nread;
+	char block[1024];
+	int file = open(file_name, O_RDONLY); //TODO: catch error
+	if (file == -1)
+	{
+		printf("Some error has occured! Can't open file.\n");
+		return;
+	}
+	while((nread = read(file, block, sizeof(block))) > 0)
+	{
+		write(arch, block, nread);
+	}
+	close(file);
 }
