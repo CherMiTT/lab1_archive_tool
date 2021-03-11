@@ -14,9 +14,9 @@ void unpack(char *file_name);
 void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id);
 void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id);
 void pack_file(int arch, char file_name[80]);
-void unpack_file();
+void unpack_file(int acrh, char file_name[80],size_t file_size);
 void pack_dir (int arch, char file_name[80]);
-void unpack_dir();
+void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int *current_parent_id);
 
 //Программа архивирует файлы без сжатия
 
@@ -71,6 +71,8 @@ void unpack(char *file_name)
 	read(arch, &file_count, sizeof(int));
 	struct file_descr descr[file_count];
 
+	int current_id = 0;
+	int current_parent_id = 0;
 	for (int i = 0; i< file_count; i++)
 	{
 		if(read(arch, &descr[i],sizeof(struct file_descr))!=sizeof(struct file_descr))
@@ -82,17 +84,49 @@ void unpack(char *file_name)
 
 	for (int i = 0; i< file_count; i++)
 	{
-		char block[descr[i].file_size]; //TODO: разбить на блоки по 1024
+		/*char block[descr[i].file_size]; //TODO: разбить на блоки по 1024
 		if(read(arch, &block,descr[i].file_size)!=descr[i].file_size)
 		{
 			printf("Incorrect file reading");
 		}
 		int file = open(descr[i].file_name, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR);
 		write(file, &block, descr[i].file_size);
-		close(file);
+		close(file);*/
+		if (descr[i].is_file)
+		{
+			unpack_file(arch, descr[i].file_name, descr[i].file_size, &current_id); //TODO: current id
+		}
+		else
+		{
+			unpack_dir(arch, descr[i].file_name, descr[i].id, &current_id, descr[i].parent_id, &current_parent_id);
+		}
 	}
 
 	close(arch);
+}
+
+void unpack_file(int arch, char file_name[80],size_t file_size, int *current_id)
+{
+	char block[file_size]; //TODO: разбить на блоки по 1024
+	if(read(arch, &block,file_size)!=file_size)
+	{
+		printf("Incorrect file reading");
+	}
+	int file = open(file_name, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR);
+	write(file, &block, file_size);
+	close(file);
+}
+
+void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int *current_parent_id)
+{
+	while(*current_id !=parent_id)
+	{
+		chdir("..");
+	}
+
+	mkdir(file_name,O_CREAT| O_TRUNC | S_IRUSR| S_IWUSR);
+	chdir(file_name);
+	*current_id = id;
 }
 
 void pack(char *file_names_arr[], int length, int start_index)
@@ -156,6 +190,7 @@ void pack(char *file_names_arr[], int length, int start_index)
 	}
 
 	lseek(arch,SEEK_SET, 0); //TODO: проверить
+	printf("%d\n",file_count);
 	write(arch, &file_count, sizeof(int));
 
 	close(arch);
@@ -173,7 +208,7 @@ void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count
 	{
 		printf("Incorrect writing\n");	
 	}
-	*file_count++;
+	(*file_count)++;
 }
 
 void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
@@ -188,7 +223,7 @@ void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
 	{
 		printf("Incorrect writing\n");	
 	}
-	*file_count++;
+	(*file_count)++;
 
 	DIR *d;
 	struct dirent *entry;
