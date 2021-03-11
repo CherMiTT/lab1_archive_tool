@@ -9,6 +9,10 @@
 
 void pack(char *file_names_arr[], int length, int start_index);
 void unpack(char *file_name);
+void pack_file(int arch, struct file_descr descr, int *file_count, int parent_id);
+void unpack_file();
+void pack_dir(int arch, struct file_descr descr, int *file_count, int parent_id);
+void unpack_dir();
 
 //Программа архивирует файлы без сжатия
 
@@ -43,9 +47,11 @@ int main(int argc, char* argv[])
 
 struct file_descr
 {
-	size_t file_size; //размер файла
+	bool file; //True - файл, false - директория
+	int id; //Нумерация начинаетя с 0
+	size_t file_size; //размер файла/дирпектории (у директории размер 0)
 	char file_name[80]; //имя файла
-	//TODO: maybe the file itself?
+	int parent_id; //-1 - нет родителя
 };
 
 void unpack(char *file_name)
@@ -116,20 +122,23 @@ void pack(char *file_names_arr[], int length, int start_index)
 		if(S_ISREG(file_stat.st_mode)) //если это файл
 		{	
 			//int file = open(file_names_arr[i], O_RDONLY); //TODO: catch error
-			printf("File name = %s, file size = %ld\n", file_names_arr[i], file_stat.st_size);
+			//printf("File name = %s, file size = %ld\n", file_names_arr[i], file_stat.st_size);
 			struct file_descr descr;
 			descr.file_size = file_stat.st_size;
 			strcpy(descr.file_name, file_names_arr[i]);
-			if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
+			/*if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
 			{
 				printf("Incorrect writing\n");	
 			}
-			file_count++;
+			file_count++;*/
+			pack_file(arch, descr, &file_count, -1);
 			
 		}
 		else if(S_ISDIR(file_stat.st_mode)) //если это директория
 		{
-			printf("%s is a directory! AAAAAAAAAAAAAAAAAAAAAAAAAA!!!\n", file_names_arr[i]);
+			struct file_descr descr;
+			descr.file_size = 0;
+			strcpy(descr.file_name, file_names_arr[i]);
 		}
 	}
 
@@ -169,4 +178,14 @@ void pack(char *file_names_arr[], int length, int start_index)
 	write(arch, &file_count, sizeof(int));
 
 	close(arch);
+}
+
+void pack_file(int arch, struct file_descr descr, int *file_count, int parent_id)
+{
+
+}
+
+void pack_dir(int arch, struct file_descr descr, int *file_count, int parent_id)
+{
+	
 }
