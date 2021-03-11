@@ -14,9 +14,9 @@ void unpack(char *file_name);
 void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id);
 void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id);
 void pack_file(int arch, char file_name[80]);
-void unpack_file(int acrh, char file_name[80],size_t file_size);
+void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, int *current_id, int current_parent_id[20], int *index);
 void pack_dir (int arch, char file_name[80]);
-void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int *current_parent_id);
+void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int current_parent_id[20], int *index);
 
 //Программа архивирует файлы без сжатия
 
@@ -72,7 +72,9 @@ void unpack(char *file_name)
 	struct file_descr descr[file_count];
 
 	int current_id = 0;
-	int current_parent_id = 0;
+	int current_parent_id[20]; //TODO; redo 20
+	int index = 0;
+
 	for (int i = 0; i< file_count; i++)
 	{
 		if(read(arch, &descr[i],sizeof(struct file_descr))!=sizeof(struct file_descr))
@@ -94,19 +96,27 @@ void unpack(char *file_name)
 		close(file);*/
 		if (descr[i].is_file)
 		{
-			unpack_file(arch, descr[i].file_name, descr[i].file_size, &current_id); //TODO: current id
+			unpack_file(arch, descr[i].file_name, descr[i].file_size, descr[i].parent_id, &current_id, current_parent_id, &index); //TODO: current id
 		}
 		else
 		{
-			unpack_dir(arch, descr[i].file_name, descr[i].id, &current_id, descr[i].parent_id, &current_parent_id);
+			unpack_dir(arch, descr[i].file_name, descr[i].id, &current_id, descr[i].parent_id, current_parent_id, &index);
 		}
 	}
 
 	close(arch);
 }
 
-void unpack_file(int arch, char file_name[80],size_t file_size, int *current_id)
+void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, int *current_id, int current_parent_id[20], int *index)
 {
+	while(*current_id != parent_id)
+	{
+		chdir("..");
+		(*index)--;
+		*current_id = parent_id;
+		parent_id = current_parent_id[*index];
+	}
+
 	char block[file_size]; //TODO: разбить на блоки по 1024
 	if(read(arch, &block,file_size)!=file_size)
 	{
@@ -117,15 +127,19 @@ void unpack_file(int arch, char file_name[80],size_t file_size, int *current_id)
 	close(file);
 }
 
-void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int *current_parent_id)
+void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int current_parent_id[20], int *index)
 {
 	while(*current_id !=parent_id)
 	{
 		chdir("..");
+		(*index)--;
+		*current_id = parent_id;
+		parent_id = current_parent_id[*index];
 	}
 
 	mkdir(file_name,O_CREAT| O_TRUNC | S_IRUSR| S_IWUSR);
 	chdir(file_name);
+	current_parent_id[++(*index)] = parent_id;
 	*current_id = id;
 }
 
