@@ -41,19 +41,6 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-
-//Формат файла архива: 
-//первые 8 байт - число, sizeof(структуры дескриптора для этого файла)
-//далее записывается этот дескриптор
-//далее идут файлы подряд в порядке, указанном в дескрипторе
-
-//struct arch_descriptor
-//{
-//	int n; //число файлов
-//	int **file_sizes; //размеры файлов	
-//	char **file_names; //имена файлов
-//};
-
 struct file_descr
 {
 	size_t file_size; //размер файла
@@ -63,8 +50,39 @@ struct file_descr
 
 void unpack(char *file_name)
 {
-	//Debug
-	printf("Within unpacking function\n");
+	int arch = open(file_name, O_RDONLY);
+	if (arch == -1)
+	{
+		printf("Some error has occured! Can't open archive.\n");
+		return;
+	}
+
+	int file_count;
+	read(arch, &file_count, sizeof(int));
+	struct file_descr descr[file_count];
+
+	for (int i = 0; i< file_count; i++)
+	{
+		if(read(arch, &descr[i],sizeof(struct file_descr))!=sizeof(struct file_descr))
+		{
+			printf("Incorrect file reading");
+		}
+		printf("File name: %s, file size = %ld\n", descr[i].file_name, descr[i].file_size);
+	}
+
+	for (int i = 0; i< file_count; i++)
+	{
+		char block[descr[i].file_size]; //TODO: разбить на блоки по 1024
+		if(read(arch, &block,descr[i].file_size)!=descr[i].file_size)
+		{
+			printf("Incorrect file reading");
+		}
+		int file = open(descr[i].file_name, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR);
+		write(file, &block, descr[i].file_size);
+		close(file);
+	}
+
+	close(arch);
 }
 
 void pack(char *file_names_arr[], int length, int start_index)
@@ -76,7 +94,7 @@ void pack(char *file_names_arr[], int length, int start_index)
 	int file_count = 0;
 
 	//Creating archive file
-	int arch = open("test_archive.txt", O_CREAT | O_WRONLY, S_IRUSR|S_IWUSR);
+	int arch = open("test_archive.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR);
 	if(arch == -1)
 	{
 		printf("Couldn't create or open archive!");
@@ -102,7 +120,10 @@ void pack(char *file_names_arr[], int length, int start_index)
 			struct file_descr descr;
 			descr.file_size = file_stat.st_size;
 			strcpy(descr.file_name, file_names_arr[i]);
-			write(arch, &descr, sizeof(struct file_descr));
+			if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
+			{
+				printf("Incorrect writing\n");	
+			}
 			file_count++;
 			
 		}
@@ -135,6 +156,7 @@ void pack(char *file_names_arr[], int length, int start_index)
 				write(arch, block, nread);
 				printf("%s",block);
 			}
+			close(file);
 			
 		}
 		else if(S_ISDIR(file_stat.st_mode)) //если это директория
