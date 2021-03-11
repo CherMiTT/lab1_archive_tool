@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
 
 void pack(char *file_names_arr[], int length, int start_index);
 void unpack(char *file_name);
@@ -75,14 +76,14 @@ void pack(char *file_names_arr[], int length, int start_index)
 	int file_count = 0;
 
 	//Creating archive file
-	int arch = open("test_rachive.tar", O_WRONLY | O_CREAT);
+	int arch = open("test_archive.txt", O_CREAT | O_WRONLY, S_IRUSR|S_IWUSR);
 	if(arch == -1)
 	{
 		printf("Couldn't create or open archive!");
-		break;
+		return;
 	}
 
-	write(
+	write(arch, &max_file_count, sizeof(int));
 
 	//Creating descriptor and filling archive
 	struct stat file_stat;
@@ -98,6 +99,11 @@ void pack(char *file_names_arr[], int length, int start_index)
 		{	
 			//int file = open(file_names_arr[i], O_RDONLY); //TODO: catch error
 			printf("File name = %s, file size = %ld\n", file_names_arr[i], file_stat.st_size);
+			struct file_descr descr;
+			descr.file_size = file_stat.st_size;
+			strcpy(descr.file_name, file_names_arr[i]);
+			write(arch, &descr, sizeof(struct file_descr));
+			file_count++;
 			
 		}
 		else if(S_ISDIR(file_stat.st_mode)) //если это директория
@@ -105,4 +111,40 @@ void pack(char *file_names_arr[], int length, int start_index)
 			printf("%s is a directory! AAAAAAAAAAAAAAAAAAAAAAAAAA!!!\n", file_names_arr[i]);
 		}
 	}
+
+	for(int i = start_index; i < length; i++)
+	{
+		int nread;
+		char block[1024];
+		int e = stat(file_names_arr[i], &file_stat); //TODO: stat is slow! Change?
+		if(e == -1) 
+		{
+			printf("Some error has occured! %s not found!\n", file_names_arr[i]);
+		}
+			
+		if(S_ISREG(file_stat.st_mode)) //если это файл
+		{	
+			int file = open(file_names_arr[i], O_RDONLY); //TODO: catch error
+			if (file == -1)
+			{
+				printf("Some error has occured! Can't open file.\n");
+				return;
+			}
+			while((nread = read(file, block, sizeof(block))) > 0)
+			{
+				write(arch, block, nread);
+				printf("%s",block);
+			}
+			
+		}
+		else if(S_ISDIR(file_stat.st_mode)) //если это директория
+		{
+			printf("%s is a directory! AAAAAAAAAAAAAAAAAAAAAAAAAA!!!\n", file_names_arr[i]);
+		}
+	}
+
+	lseek(arch,SEEK_SET, 0); //TODO: проверить
+	write(arch, &file_count, sizeof(int));
+
+	close(arch);
 }
