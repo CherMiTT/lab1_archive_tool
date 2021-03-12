@@ -106,8 +106,8 @@ void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, i
 	while(*cur_id != parent_id)
 	{
 		chdir("..");
-		*cur_id = parent_id;
-		parent_id = nested_directory_array[--(*index)];
+		//printf("curr_id = %d, parent_id = %d, parent = %d\n", *cur_id, parent_id, nested_directory_array[(*index)]);
+		*cur_id = nested_directory_array[(*index)--];
 	}
 
 	char block[file_size]; //TODO: разбить на блоки по 1024
@@ -126,8 +126,7 @@ void unpack_dir(int arch, char file_name[80], int id, int *cur_id, int parent_id
 	while(*cur_id !=parent_id)
 	{
 		chdir("..");
-		*cur_id = parent_id;
-		parent_id = nested_directory_array[--(*index)];
+		*cur_id = nested_directory_array[(*index)--];
 	}
 
 	mkdir(file_name,O_CREAT| O_TRUNC | S_IRUSR| S_IWUSR);
@@ -207,7 +206,7 @@ void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count
 	descr.file_size = file_size;
 	strcpy(descr.file_name, file_name);
 	descr.is_file = true;
-	descr.id = *file_count;
+	descr.id = *file_count + 1;
 	descr.parent_id = parent_id;
 	if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
 	{
@@ -222,7 +221,7 @@ void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id) /
 	descr.file_size = 0;
 	strcpy(descr.file_name, file_name);
 	descr.is_file = false;
-	descr.id = *file_count;
+	descr.id = *file_count + 1;
 	descr.parent_id = parent_id;
 	if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
 	{
