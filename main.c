@@ -14,9 +14,9 @@ void unpack(char *file_name);
 void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id);
 void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id);
 void pack_file(int arch, char file_name[80]);
-void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, int *current_id, int current_parent_id[20], int *index);
+void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, int *cur_id, int nested_directory_array[20], int *index);
 void pack_dir (int arch, char file_name[80]);
-void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int current_parent_id[20], int *index);
+void unpack_dir(int arch, char file_name[80], int id, int *cur_id, int parent_id, int nested_directory_array[20], int *index);
 
 //Программа архивирует файлы без сжатия
 
@@ -30,13 +30,13 @@ int main(int argc, char* argv[])
 		{
 			case 'p': //pack, после него идёт список файлов для архивации
 				{
-					printf("packing, optind = %d\n", optind);
+					//printf("packing, optind = %d\n", optind);
 					pack(argv, argc, optind);
 					break;
 				}
 			case 'u': //unpack, после него один файл - архив для распаковки
 				{
-					printf("unpacking, optarg = %s\n", optarg);
+					//printf("unpacking, optarg = %s\n", optarg);
 					unpack(optarg);
 					break;
 				}
@@ -71,8 +71,8 @@ void unpack(char *file_name)
 	read(arch, &file_count, sizeof(int));
 	struct file_descr descr[file_count];
 
-	int current_id = 0;
-	int current_parent_id[20]; //TODO; redo 20
+	int cur_id = 0;
+	int nested_directory_array[20]; //TODO; redo 20
 	int index = 0;
 
 	for (int i = 0; i< file_count; i++)
@@ -81,40 +81,33 @@ void unpack(char *file_name)
 		{
 			printf("Incorrect file reading");
 		}
-		printf("File name: %s, file size = %ld\n", descr[i].file_name, descr[i].file_size);
+		//printf("File name: %s, file size = %ld, file id = %d, parent's id = %d\n", descr[i].file_name, descr[i].file_size, descr[i].id, descr[i].parent_id);
 	}
 
 	for (int i = 0; i< file_count; i++)
 	{
-		/*char block[descr[i].file_size]; //TODO: разбить на блоки по 1024
-		if(read(arch, &block,descr[i].file_size)!=descr[i].file_size)
-		{
-			printf("Incorrect file reading");
-		}
-		int file = open(descr[i].file_name, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR);
-		write(file, &block, descr[i].file_size);
-		close(file);*/
 		if (descr[i].is_file)
 		{
-			unpack_file(arch, descr[i].file_name, descr[i].file_size, descr[i].parent_id, &current_id, current_parent_id, &index); //TODO: current id
+			unpack_file(arch, descr[i].file_name, descr[i].file_size, descr[i].parent_id, &cur_id, nested_directory_array, &index); //TODO: current id
 		}
 		else
 		{
-			unpack_dir(arch, descr[i].file_name, descr[i].id, &current_id, descr[i].parent_id, current_parent_id, &index);
+			unpack_dir(arch, descr[i].file_name, descr[i].id, &cur_id, descr[i].parent_id, nested_directory_array, &index);
 		}
 	}
 
 	close(arch);
+	printf("Unpacked\n");
 }
 
-void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, int *current_id, int current_parent_id[20], int *index)
+void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, int *cur_id, int nested_directory_array[20], int *index)
 {
-	while(*current_id != parent_id)
+	//printf("Unpacking file %s\n. curr_id = %d, parent_id = %d\n", file_name, *cur_id, parent_id);
+	while(*cur_id != parent_id)
 	{
 		chdir("..");
-		(*index)--;
-		*current_id = parent_id;
-		parent_id = current_parent_id[*index];
+		*cur_id = parent_id;
+		parent_id = nested_directory_array[--(*index)];
 	}
 
 	char block[file_size]; //TODO: разбить на блоки по 1024
@@ -127,39 +120,37 @@ void unpack_file(int arch, char file_name[80],size_t file_size, int parent_id, i
 	close(file);
 }
 
-void unpack_dir(int arch, char file_name[80], int id, int *current_id, int parent_id, int current_parent_id[20], int *index)
+void unpack_dir(int arch, char file_name[80], int id, int *cur_id, int parent_id, int nested_directory_array[20], int *index)
 {
-	while(*current_id !=parent_id)
+	//printf("Unpacking directory %s\n. curr_id = %d, parent_id = %d\n", file_name, *cur_id, parent_id);
+	while(*cur_id !=parent_id)
 	{
 		chdir("..");
-		(*index)--;
-		*current_id = parent_id;
-		parent_id = current_parent_id[*index];
+		*cur_id = parent_id;
+		parent_id = nested_directory_array[--(*index)];
 	}
 
 	mkdir(file_name,O_CREAT| O_TRUNC | S_IRUSR| S_IWUSR);
 	chdir(file_name);
-	current_parent_id[++(*index)] = parent_id;
-	*current_id = id;
+	nested_directory_array[++(*index)] = parent_id;
+	*cur_id = id;
 }
 
 void pack(char *file_names_arr[], int length, int start_index)
 {
-	//Debug
-	printf("In the packing function now.\n");
+	//printf("In the packing function now.\n");
 
-	int max_file_count = 100;
 	int file_count = 0;
 
 	//Creating archive file
-	int arch = open("test_archive.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR);
+	int arch = open("test_archive.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR); //TODO: change name
 	if(arch == -1)
 	{
 		printf("Couldn't create or open archive!");
 		return;
 	}
 
-	write(arch, &max_file_count, sizeof(int));
+	write(arch, &file_count, sizeof(int));
 
 	//Creating descriptor and filling archive
 	struct stat file_stat;
@@ -173,9 +164,7 @@ void pack(char *file_names_arr[], int length, int start_index)
 			
 		if(S_ISREG(file_stat.st_mode)) //если это файл
 		{	
-			//int file = open(file_names_arr[i], O_RDONLY); //TODO: catch error
-			//printf("File name = %s, file size = %ld\n", file_names_arr[i], file_stat.st_size);
-			pack_fdescr(arch, file_names_arr[i], file_stat.st_size, &file_count, -1);
+			pack_fdescr(arch, file_names_arr[i], file_stat.st_size, &file_count, 0);
 			
 		}
 		else if(S_ISDIR(file_stat.st_mode)) //если это директория
@@ -187,7 +176,7 @@ void pack(char *file_names_arr[], int length, int start_index)
 	//Writing data into archive
 	for(int i = start_index; i < length; i++)
 	{
-		int e = stat(file_names_arr[i], &file_stat); //TODO: stat is slow! Change?
+		int e = stat(file_names_arr[i], &file_stat);
 		if(e == -1) 
 		{
 			printf("Some error has occured! %s not found!\n", file_names_arr[i]);
@@ -203,14 +192,16 @@ void pack(char *file_names_arr[], int length, int start_index)
 		}
 	}
 
-	lseek(arch,SEEK_SET, 0); //TODO: проверить
-	printf("%d\n",file_count);
+	//writing true count of files instead of default value in the bgning of the file
+	lseek(arch,SEEK_SET, 0);
+	//printf("%d\n",file_count);
 	write(arch, &file_count, sizeof(int));
 
 	close(arch);
+	printf("Packed\n");
 }
 
-void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id)
+void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count, int parent_id) //creates and writes file descriptor in hte archive
 {
 	struct file_descr descr;
 	descr.file_size = file_size;
@@ -220,12 +211,12 @@ void pack_fdescr(int arch, char file_name[80], size_t file_size, int *file_count
 	descr.parent_id = parent_id;
 	if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
 	{
-		printf("Incorrect writing\n");	
+		printf("Couldnt write file descriptor in the archive.\n");	
 	}
 	(*file_count)++;
 }
 
-void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
+void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id) //creates and writes directory descriptor in the archive
 {
 	struct file_descr descr;
 	descr.file_size = 0;
@@ -235,7 +226,7 @@ void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
 	descr.parent_id = parent_id;
 	if(write(arch, &descr, sizeof(struct file_descr))!=sizeof(struct file_descr))
 	{
-		printf("Incorrect writing\n");	
+		printf("Couldn't write directory descriptor in the archive.\n");	
 	}
 	(*file_count)++;
 
@@ -247,7 +238,7 @@ void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
 		printf("Error occured! Can't open directory.");
 	}
 	chdir(file_name);
-	printf("In directory %s\n", file_name);
+	//printf("In directory %s\n", file_name);
 	while ((entry = readdir(d)) != NULL)
 	{
 		lstat(entry->d_name, &statbuf);
@@ -267,7 +258,7 @@ void pack_ddestr(int arch, char file_name[80], int *file_count, int parent_id)
 	closedir(d);
 }
 
-void pack_dir (int arch, char file_name[80])
+void pack_dir (int arch, char file_name[80]) //adds content of directory to the archive
 {
 	DIR *d;
 	struct dirent *entry;
@@ -295,11 +286,11 @@ void pack_dir (int arch, char file_name[80])
 	closedir(d);
 }
 
-void pack_file(int arch, char file_name[80])
+void pack_file(int arch, char file_name[80]) //adds file's data to the archive
 {
 	int nread;
 	char block[1024];
-	int file = open(file_name, O_RDONLY); //TODO: catch error
+	int file = open(file_name, O_RDONLY);
 	if (file == -1)
 	{
 		printf("Some error has occured! Can't open file.\n");
