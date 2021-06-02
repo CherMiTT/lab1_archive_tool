@@ -142,7 +142,7 @@ void pack(char *file_names_arr[], int length, int start_index)
 	int file_count = 0;
 
 	//Creating archive file
-	int arch = open("test_archive.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR); //TODO: change name
+	int arch = open("test_archive", O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR|S_IWUSR); //TODO: change name
 	if(arch == -1)
 	{
 		printf("Couldn't create or open archive!");
